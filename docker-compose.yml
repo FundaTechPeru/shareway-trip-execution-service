@@ -20,7 +20,7 @@ services:
       dockerfile: ./Dockerfile
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__TripExecution: Host=db;Database=shareway_trip_execution;Username=postgres;Password=postgres
+      ConnectionStrings__TripExecution: Host=db;Database=shareway_trip_execution;Username=postgres1;Password=postgres
     ports:
       - "8080:8080"
     depends_on:
