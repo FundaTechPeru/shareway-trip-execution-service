@@ -17,7 +17,7 @@ public sealed class CrearViajeManejador(IViajeRepositorio viajes, IUnidadDeTraba
             new PasajeroId(p.PasajeroId),
             CodigoAbordaje.DesdeHash(p.CodigoHash)));
 
-        var viaje = Viaje.Crear(grupoId, new ConductorId(comando.ConductorId), pasajeros, reloj.GetUtcNow());
+        var viaje = Viaje.Crear(grupoId, new ConductorId(comando.ConductorId), pasajeros, reloj.GetUtcNow(), comando.RutaJson);
 
         await viajes.AgregarAsync(viaje, ct);
         await udt.GuardarCambiosAsync(ct);

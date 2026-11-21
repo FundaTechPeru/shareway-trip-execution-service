@@ -1,9 +1,12 @@
+using System.Text.Json;
 using ShareWay.TripExecution.Domain.Viajes;
 
 namespace ShareWay.TripExecution.Application.Viajes.Consultas.ObtenerViaje;
 
 public sealed record AbordajeDto(Guid ReservaId, Guid PasajeroId, bool Abordo, DateTimeOffset? AbordadoEn, int IntentosFallidos, bool Bloqueado);
-public sealed record ViajeDto(Guid Id, Guid GrupoId, Guid ConductorId, string Estado, DateTimeOffset? InicioReal, DateTimeOffset? FinReal, IReadOnlyList<AbordajeDto> Abordajes)
+public sealed record PuntoRutaDto(string Etiqueta, double Latitud, double Longitud, string Tipo);
+public sealed record RutaViajeDto(DateTimeOffset SalidaProgramada, string Origen, string Destino, IReadOnlyList<PuntoRutaDto> Puntos, bool EsPrueba = false);
+public sealed record ViajeDto(Guid Id, Guid GrupoId, Guid ConductorId, string Estado, DateTimeOffset? InicioReal, DateTimeOffset? FinReal, IReadOnlyList<AbordajeDto> Abordajes, RutaViajeDto? Ruta)
 {
     public static ViajeDto Desde(Viaje v) => new(
         v.Id.Valor,
@@ -14,5 +17,19 @@ public sealed record ViajeDto(Guid Id, Guid GrupoId, Guid ConductorId, string Es
         v.FinReal,
         v.Abordajes
         .Select(a => new AbordajeDto(a.Id.Valor, a.PasajeroId.Valor, a.EstaAbordado, a.AbordadoEn, a.IntentosFallidos, a.EstaBloqueado))
-        .ToList());
+        .ToList(),
+        LeerRuta(v.RutaJson));
+
+    private static RutaViajeDto? LeerRuta(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            return JsonSerializer.Deserialize<RutaViajeDto>(json, JsonSerializerOptions.Web);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }

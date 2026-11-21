@@ -17,6 +17,7 @@ internal sealed class ViajeConfiguracion : IEntityTypeConfiguration<Viaje>
         builder.Property(v => v.Estado).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(v => v.InicioReal);
         builder.Property(v => v.FinReal);
+        builder.Property(v => v.RutaJson).HasColumnType("jsonb");
         builder.Property(v => v.Version).IsConcurrencyToken();
         builder.HasIndex(v => v.GrupoId).IsUnique();
         builder.HasIndex(v => v.ConductorId);
