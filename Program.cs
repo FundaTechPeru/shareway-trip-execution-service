@@ -22,9 +22,16 @@ using ShareWay.TripExecution.Api.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Render already uses the standard ASP.NET configuration keys Jwt__Key,
+// Jwt__Issuer and Jwt__Audience. Keep JWT_SECRET as an override for local use.
 var jwtSecret = builder.Configuration["JWT_SECRET"];
 if (string.IsNullOrWhiteSpace(jwtSecret))
-    throw new InvalidOperationException("Falta configurar JWT_SECRET para validar las sesiones del Gateway.");
+    jwtSecret = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrWhiteSpace(jwtSecret))
+    throw new InvalidOperationException("Falta configurar JWT_SECRET o Jwt:Key para validar las sesiones del Gateway.");
+
+var jwtIssuer = builder.Configuration["Jwt:Issuer"];
+var jwtAudience = builder.Configuration["Jwt:Audience"];
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -35,8 +42,10 @@ builder.Services
         {
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
-            ValidateIssuer = false,
-            ValidateAudience = false,
+            ValidateIssuer = !string.IsNullOrWhiteSpace(jwtIssuer),
+            ValidIssuer = jwtIssuer,
+            ValidateAudience = !string.IsNullOrWhiteSpace(jwtAudience),
+            ValidAudience = jwtAudience,
             ValidateLifetime = true,
             RequireExpirationTime = true,
             ClockSkew = TimeSpan.FromSeconds(30),

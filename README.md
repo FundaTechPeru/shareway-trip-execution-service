@@ -170,7 +170,7 @@ Base: `/api/viajes`. Los comandos devuelven `204 No Content` (o el resultado cor
 | `POST` | `/api/viajes/{id}/cancelar` | Cancela el viaje confirmado como `ADMIN` o como conductor asignado |
 | `GET` | `/health` | Chequeo de salud |
 
-Los endpoints protegidos requieren `Authorization: Bearer <token>` firmado con HS256. Se usa `JWT_SECRET`, compartido con el Gateway. El servicio valida firma, vigencia, UUID en `sub` y rol (`ADMIN` o `DRIVER`). El endpoint `/health` continúa público.
+Los endpoints protegidos requieren `Authorization: Bearer <token>` firmado con HS256. La clave se lee de `JWT_SECRET` o, si no existe, de `Jwt:Key` (`Jwt__Key` en Render), y debe coincidir con la del Gateway. Si se configuran `Jwt:Issuer` (`Jwt__Issuer`) y `Jwt:Audience` (`Jwt__Audience`), también se validan. El servicio valida firma, vigencia, UUID en `sub` y rol (`ADMIN` o `DRIVER`). El endpoint `/health` continúa público.
 
 `ruta` usa este formato: `salidaProgramada` (ISO 8601), `origen`, `destino`, `esPrueba` y `puntos`, donde cada punto contiene `etiqueta`, `latitud`, `longitud` y `tipo` (`ORIGEN`, `PARADA` o `DESTINO`). El primer punto debe ser el origen y el último, el destino. Los viajes históricos sin estos datos devuelven `ruta: null`.
 
@@ -223,7 +223,9 @@ Las versiones exactas están en el `.csproj`. Para revisar actualizaciones: `dot
 | `ConnectionStrings__TripExecution` | Conexión a PostgreSQL. Acepta formato Npgsql o URL `postgresql://` | `Host=localhost;Port=5432;Database=shareway_trip_execution;Username=postgres;Password=postgres` |
 | `ASPNETCORE_ENVIRONMENT` | Entorno. En `Development` se crean las tablas al arrancar y se expone OpenAPI | `Development` |
 | `PORT` | Puerto de escucha (lo usa Render) | `8080` |
-| `JWT_SECRET` | Clave HS256 compartida con el Gateway para validar tokens | Configurar como secreto del entorno; no versionar |
+| `JWT_SECRET` o `Jwt__Key` | Clave HS256 compartida con el Gateway para validar tokens. `JWT_SECRET` tiene prioridad | Configurar como secreto del entorno; no versionar |
+| `Jwt__Issuer` | Emisor esperado del JWT; se valida cuando está configurado | Configurar igual que el Gateway |
+| `Jwt__Audience` | Audiencia esperada del JWT; se valida cuando está configurada | Configurar igual que el Gateway |
 
 Los valores por defecto están en `appsettings.json` y `appsettings.Development.json`.
 
@@ -231,7 +233,7 @@ Los valores por defecto están en `appsettings.json` y `appsettings.Development.
 
 ## 9. Cómo ejecutarlo
 
-**Requisitos:** .NET 10 SDK, Docker y `JWT_SECRET` configurado en el entorno.
+**Requisitos:** .NET 10 SDK, Docker y la clave del Gateway configurada como `JWT_SECRET` o `Jwt__Key`.
 
 ### Opción A — Base de datos en Docker y API con `dotnet run` (desarrollo)
 
