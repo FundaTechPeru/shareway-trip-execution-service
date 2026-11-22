@@ -6,5 +6,6 @@ public interface IViajeRepositorio
 {
     Task<Viaje?> ObtenerPorIdAsync(ViajeId id, CancellationToken ct);
     Task<Viaje?> ObtenerPorGrupoAsync(GrupoId grupoId, CancellationToken ct);
+    Task<IReadOnlyList<Viaje>> ListarPorConductorAsync(ConductorId conductorId, CancellationToken ct);
     Task AgregarAsync(Viaje viaje, CancellationToken ct);
 }

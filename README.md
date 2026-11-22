@@ -161,13 +161,18 @@ Base: `/api/viajes`. Los comandos devuelven `204 No Content` (o el resultado cor
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| `POST` | `/api/viajes` | Crea un viaje. En producción nace del evento `GrupoConfirmado`; este endpoint permite simularlo |
-| `GET` | `/api/viajes/{id}` | Consulta un viaje con sus abordajes |
-| `POST` | `/api/viajes/{id}/abordajes` | Valida el código de abordaje de una reserva |
-| `POST` | `/api/viajes/{id}/iniciar` | Inicia el viaje |
-| `POST` | `/api/viajes/{id}/finalizar` | Finaliza el viaje |
-| `POST` | `/api/viajes/{id}/cancelar` | Cancela el viaje (solo si está `Confirmado`) |
+| `POST` | `/api/viajes` | Simula un viaje confirmado (solo `ADMIN`); acepta `ruta` opcional con horario, etiquetas y puntos |
+| `GET` | `/api/viajes/mine` | Lista los viajes del conductor autenticado (`DRIVER`), filtrados por el `sub` del JWT |
+| `GET` | `/api/viajes/{id}` | Consulta el viaje asignado al conductor autenticado (`DRIVER`) |
+| `POST` | `/api/viajes/{id}/abordajes` | Valida un abordaje como conductor asignado (`DRIVER`); la identidad viene del JWT |
+| `POST` | `/api/viajes/{id}/iniciar` | Inicia el viaje como conductor asignado (`DRIVER`); la identidad viene del JWT |
+| `POST` | `/api/viajes/{id}/finalizar` | Finaliza el viaje como conductor asignado (`DRIVER`); la identidad viene del JWT |
+| `POST` | `/api/viajes/{id}/cancelar` | Cancela el viaje confirmado como `ADMIN` o como conductor asignado |
 | `GET` | `/health` | Chequeo de salud |
+
+Los endpoints protegidos requieren `Authorization: Bearer <token>` firmado con HS256. La clave se lee de `JWT_SECRET` o, si no existe, de `Jwt:Key` (`Jwt__Key` en Render), y debe coincidir con la del Gateway. Si se configuran `Jwt:Issuer` (`Jwt__Issuer`) y `Jwt:Audience` (`Jwt__Audience`), también se validan. El servicio valida firma, vigencia, UUID en `sub` y rol (`ADMIN` o `DRIVER`). El endpoint `/health` continúa público.
+
+`ruta` usa este formato: `salidaProgramada` (ISO 8601), `origen`, `destino`, `esPrueba` y `puntos`, donde cada punto contiene `etiqueta`, `latitud`, `longitud` y `tipo` (`ORIGEN`, `PARADA` o `DESTINO`). El primer punto debe ser el origen y el último, el destino. Los viajes históricos sin estos datos devuelven `ruta: null`.
 
 ### Mapeo de errores
 
@@ -179,7 +184,7 @@ Base: `/api/viajes`. Los comandos devuelven `204 No Content` (o el resultado cor
 | Datos de entrada inválidos | `400` |
 | Error inesperado | `500` |
 
-> **Pendiente de seguridad:** hoy `conductorId` viaja en el body. Debe obtenerse del token (claim `sub`) cuando se integre la autenticación.
+El `conductorId` del endpoint de simulación solo lo puede asignar un `ADMIN`. En los comandos de ejecución se ignora cualquier identidad del body: el servicio usa el UUID del `sub` validado y comprueba que corresponda al conductor asignado.
 
 ---
 
@@ -217,20 +222,26 @@ Las versiones exactas están en el `.csproj`. Para revisar actualizaciones: `dot
 |---|---|---|
 | `ConnectionStrings__TripExecution` | Conexión a PostgreSQL. Acepta formato Npgsql o URL `postgresql://` | `Host=localhost;Port=5432;Database=shareway_trip_execution;Username=postgres;Password=postgres` |
 | `ASPNETCORE_ENVIRONMENT` | Entorno. En `Development` se crean las tablas al arrancar y se expone OpenAPI | `Development` |
+| `Database__AutoCreate` | Si es `true`, ejecuta `EnsureCreated` también fuera de `Development` (lo usa el Blueprint de Render) | `true` en Render |
+| `Swagger__Enabled` | Si es `true`, expone OpenAPI/Swagger UI fuera de `Development` | `true` en Render |
 | `PORT` | Puerto de escucha (lo usa Render) | `8080` |
+| `JWT_SECRET` o `Jwt__Key` | Clave HS256 compartida con el Gateway para validar tokens. `JWT_SECRET` tiene prioridad | Configurar como secreto del entorno; no versionar |
+| `Jwt__Issuer` | Emisor esperado del JWT; se valida cuando está configurado | Configurar igual que el Gateway |
+| `Jwt__Audience` | Audiencia esperada del JWT; se valida cuando está configurada | Configurar igual que el Gateway |
 
-Los valores por defecto están en `appsettings.json` y `appsettings.Development.json`.
+`appsettings.json` y `appsettings.Development.json` solo contienen valores no secretos. La clave JWT **no está versionada**: debe configurarse como `JWT_SECRET` (o `Jwt__Key`) en el entorno. En Render, `render.yaml` declara `JWT_SECRET` con `sync: false`.
 
 ---
 
 ## 9. Cómo ejecutarlo
 
-**Requisitos:** .NET 10 SDK y Docker.
+**Requisitos:** .NET 10 SDK, Docker y la clave del Gateway configurada como `JWT_SECRET` o `Jwt__Key`.
 
 ### Opción A — Base de datos en Docker y API con `dotnet run` (desarrollo)
 
 ```bash
 docker compose up -d db
+export JWT_SECRET='<secreto local compartido con el Gateway>'
 ASPNETCORE_ENVIRONMENT=Development dotnet run
 ```
 
@@ -239,6 +250,7 @@ La API queda en `http://localhost:5223`.
 ### Opción B — Todo en Docker
 
 ```bash
+export JWT_SECRET='<secreto local compartido con el Gateway>'
 docker compose up --build
 ```
 
@@ -247,25 +259,32 @@ La API queda en `http://localhost:8080`. No combines las opciones A y B a la vez
 ### Probar el flujo completo
 
 ```bash
-URL=http://localhost:5223
+URL=https://shareway-api-gateway.onrender.com/api/v1/trips
+# Define ADMIN_TOKEN y DRIVER_TOKEN con tokens vigentes obtenidos del login.
 CONDUCTOR=11111111-1111-1111-1111-111111111111
 RESERVA=22222222-2222-2222-2222-222222222222
 HASH=$(echo -n 482913 | sha256sum | cut -d' ' -f1)
 
 # 1) Crear el viaje (simula el evento GrupoConfirmado)
-curl -X POST $URL/api/viajes -H "Content-Type: application/json" -d '{
+curl -X POST $URL -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" -d '{
   "grupoId": "33333333-3333-3333-3333-333333333333",
   "conductorId": "'$CONDUCTOR'",
-  "pasajeros": [{ "reservaId": "'$RESERVA'", "pasajeroId": "44444444-4444-4444-4444-444444444444", "codigoHash": "'$HASH'" }]
+  "pasajeros": [{ "reservaId": "'$RESERVA'", "pasajeroId": "44444444-4444-4444-4444-444444444444", "codigoHash": "'$HASH'" }],
+  "ruta": {
+    "salidaProgramada": "2026-11-22T07:10:00-05:00",
+    "origen": "Lince (prueba)",
+    "destino": "San Isidro (prueba)",
+    "esPrueba": true,
+    "puntos": [
+      { "etiqueta": "Lince (prueba)", "latitud": -12.088, "longitud": -77.043, "tipo": "ORIGEN" },
+      { "etiqueta": "San Isidro (prueba)", "latitud": -12.105, "longitud": -77.023, "tipo": "DESTINO" }
+    ]
+  }
 }'
 ID=<id devuelto>
 
-# 2) Validar abordaje, iniciar, finalizar y consultar
-curl -X POST $URL/api/viajes/$ID/abordajes -H "Content-Type: application/json" \
-  -d '{"conductorId":"'$CONDUCTOR'","reservaId":"'$RESERVA'","codigo":"482913","metodo":"Pin"}'
-curl -X POST $URL/api/viajes/$ID/iniciar   -H "Content-Type: application/json" -d '{"conductorId":"'$CONDUCTOR'"}'
-curl -X POST $URL/api/viajes/$ID/finalizar -H "Content-Type: application/json" -d '{"conductorId":"'$CONDUCTOR'"}'
-curl $URL/api/viajes/$ID
+# 2) Consultar los viajes del conductor autenticado (filtra por JWT `sub`)
+curl $URL/mine -H "Authorization: Bearer $DRIVER_TOKEN"
 ```
 
 Para detener todo: `Ctrl+C` en la API y `docker compose stop db` (conserva datos) o `docker compose down -v` (borra también los datos).
@@ -288,13 +307,15 @@ El documento OpenAPI se puede importar en Postman o Insomnia. Si se instala una 
 ## 11. Base de datos
 
 - **Motor:** PostgreSQL 17. **Esquema:** `trip_execution`.
-- **Creación de tablas:** en `Development` se ejecuta `EnsureCreated` al arrancar. Para entornos reales se deben usar **migraciones** (`dotnet ef migrations add Inicial` / `dotnet ef database update`); no mezcles ambos mecanismos.
+- **Creación de tablas:** se ejecuta `EnsureCreated` al arrancar en `Development` o cuando `Database__AutoCreate=true` (así lo configura `render.yaml`). Para entornos reales lo recomendable es usar **migraciones** (`dotnet ef migrations add Inicial` / `dotnet ef database update`); no mezcles ambos mecanismos sin antes comprobar el esquema resultante.
 
 | Tabla | Contenido |
 |---|---|
-| `viajes` | Aggregate raíz (índice único por `GrupoId`, token de concurrencia `Version`) |
+| `viajes` | Aggregate raíz (índice único por `GrupoId`, token de concurrencia `Version`, `RutaJson` nullable en `jsonb`) |
 | `abordajes` | Un registro por reserva confirmada (hash del código, intentos, hora de abordaje) |
 | `outbox` | Eventos de integración pendientes y publicados |
+
+Para una base existente, aplica primero [la migración aditiva](database/migrations/20261121_add_ruta_json.sql) desde una conexión administrativa. Confirma que existe `trip_execution.viajes` antes de ejecutarla. La migración no borra ni actualiza filas. Ojo: con `Database__AutoCreate=true`, Render ejecuta `EnsureCreated`; decide un solo mecanismo antes de desplegar para no crear un esquema divergente.
 
 ### Consultar los datos
 
@@ -314,7 +335,20 @@ La base **no trae datos de ejemplo**: arranca vacía y se llena al usar la API.
 
 ---
 
-## 12. Decisiones de diseño
+## 12. Despliegue en Render
+
+El Blueprint `render.yaml` crea:
+
+- Base `shareway-trip-execution-db` (PostgreSQL 17, acceso interno).
+- Servicio web `shareway-trip-execution` (Docker, puerto 8080, healthcheck `/health`).
+- `ConnectionStrings__TripExecution` inyectada desde la base en formato URL; `Program.cs` la normaliza a formato Npgsql.
+- `Database__AutoCreate=true`, `Swagger__Enabled=true` y `JWT_SECRET` (`sync: false`, se configura en Render).
+
+Rotación de credenciales: crear la credencial nueva en Render → actualizar `ConnectionStrings__TripExecution` → desplegar y verificar `/health` → eliminar la credencial anterior. Para JWT, actualizar `JWT_SECRET` en los validadores y al final en el emisor (Driver Management). `/health` es público: después de rotar la clave, prueba también un endpoint real con un token nuevo.
+
+---
+
+## 13. Decisiones de diseño
 
 | Decisión | Motivo |
 |---|---|
@@ -327,4 +361,13 @@ La base **no trae datos de ejemplo**: arranca vacía y se llena al usar la API.
 | **Concurrencia optimista (`Version`)** | Evita que requests simultáneos eludan el bloqueo por intentos |
 | **Sin MediatR ni bus interno** | Menos dependencias; los endpoints invocan directamente a los manejadores |
 | **Referencias entre contextos solo por Id** | Bajo acoplamiento entre bounded contexts |
+
+---
+
+## 14. Limitaciones y próximos pasos
+
+- El adaptador `IBrokerDeMensajes` solo escribe en el log; falta conectar un broker real.
+- La creación de tablas usa `EnsureCreated` (también en Render por `Database__AutoCreate`); conviene migrar a migraciones EF antes de crecer.
+- Los secretos viven solo en variables de entorno; no se versionan. Al rotar credenciales, elimina siempre la anterior y el archivo temporal local.
+- OpenAPI/Swagger queda expuesto en Render por `Swagger__Enabled=true`; desactívalo si el entorno es público.
 

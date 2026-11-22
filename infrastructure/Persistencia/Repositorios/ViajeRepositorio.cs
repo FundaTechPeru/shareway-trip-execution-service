@@ -8,5 +8,7 @@ internal sealed class ViajeRepositorio(TripExecutionDbContext contexto) : IViaje
 {
     public Task<Viaje?> ObtenerPorIdAsync(ViajeId id, CancellationToken ct) => contexto.Viajes.Include(v => v.Abordajes).FirstOrDefaultAsync(v => v.Id == id, ct);
     public Task<Viaje?> ObtenerPorGrupoAsync(GrupoId grupoId, CancellationToken ct) => contexto.Viajes.Include(v => v.Abordajes).FirstOrDefaultAsync(v => v.GrupoId == grupoId, ct);
+    public async Task<IReadOnlyList<Viaje>> ListarPorConductorAsync(ConductorId conductorId, CancellationToken ct) =>
+        await contexto.Viajes.Include(v => v.Abordajes).Where(v => v.ConductorId == conductorId).ToListAsync(ct);
     public async Task AgregarAsync(Viaje viaje, CancellationToken ct) => await contexto.Viajes.AddAsync(viaje, ct);
 }
