@@ -222,12 +222,14 @@ Las versiones exactas están en el `.csproj`. Para revisar actualizaciones: `dot
 |---|---|---|
 | `ConnectionStrings__TripExecution` | Conexión a PostgreSQL. Acepta formato Npgsql o URL `postgresql://` | `Host=localhost;Port=5432;Database=shareway_trip_execution;Username=postgres;Password=postgres` |
 | `ASPNETCORE_ENVIRONMENT` | Entorno. En `Development` se crean las tablas al arrancar y se expone OpenAPI | `Development` |
+| `Database__AutoCreate` | Si es `true`, ejecuta `EnsureCreated` también fuera de `Development` (lo usa el Blueprint de Render) | `true` en Render |
+| `Swagger__Enabled` | Si es `true`, expone OpenAPI/Swagger UI fuera de `Development` | `true` en Render |
 | `PORT` | Puerto de escucha (lo usa Render) | `8080` |
 | `JWT_SECRET` o `Jwt__Key` | Clave HS256 compartida con el Gateway para validar tokens. `JWT_SECRET` tiene prioridad | Configurar como secreto del entorno; no versionar |
 | `Jwt__Issuer` | Emisor esperado del JWT; se valida cuando está configurado | Configurar igual que el Gateway |
 | `Jwt__Audience` | Audiencia esperada del JWT; se valida cuando está configurada | Configurar igual que el Gateway |
 
-Los valores por defecto están en `appsettings.json` y `appsettings.Development.json`.
+`appsettings.json` y `appsettings.Development.json` solo contienen valores no secretos. La clave JWT **no está versionada**: debe configurarse como `JWT_SECRET` (o `Jwt__Key`) en el entorno. En Render, `render.yaml` declara `JWT_SECRET` con `sync: false`.
 
 ---
 
@@ -305,7 +307,7 @@ El documento OpenAPI se puede importar en Postman o Insomnia. Si se instala una 
 ## 11. Base de datos
 
 - **Motor:** PostgreSQL 17. **Esquema:** `trip_execution`.
-- **Creación de tablas:** en `Development` se ejecuta `EnsureCreated` al arrancar. Para entornos reales se deben usar **migraciones** (`dotnet ef migrations add Inicial` / `dotnet ef database update`); no mezcles ambos mecanismos.
+- **Creación de tablas:** se ejecuta `EnsureCreated` al arrancar en `Development` o cuando `Database__AutoCreate=true` (así lo configura `render.yaml`). Para entornos reales lo recomendable es usar **migraciones** (`dotnet ef migrations add Inicial` / `dotnet ef database update`); no mezcles ambos mecanismos sin antes comprobar el esquema resultante.
 
 | Tabla | Contenido |
 |---|---|
@@ -313,7 +315,7 @@ El documento OpenAPI se puede importar en Postman o Insomnia. Si se instala una 
 | `abordajes` | Un registro por reserva confirmada (hash del código, intentos, hora de abordaje) |
 | `outbox` | Eventos de integración pendientes y publicados |
 
-Para una base existente, aplica primero [la migración aditiva](database/migrations/20261121_add_ruta_json.sql) desde una conexión administrativa. Confirma que existe `trip_execution.viajes` antes de ejecutarla. La migración no borra ni actualiza filas. `EnsureCreated` solo se usa en Development; no se ejecuta en Render.
+Para una base existente, aplica primero [la migración aditiva](database/migrations/20261121_add_ruta_json.sql) desde una conexión administrativa. Confirma que existe `trip_execution.viajes` antes de ejecutarla. La migración no borra ni actualiza filas. Ojo: con `Database__AutoCreate=true`, Render ejecuta `EnsureCreated`; decide un solo mecanismo antes de desplegar para no crear un esquema divergente.
 
 ### Consultar los datos
 
@@ -333,7 +335,20 @@ La base **no trae datos de ejemplo**: arranca vacía y se llena al usar la API.
 
 ---
 
-## 12. Decisiones de diseño
+## 12. Despliegue en Render
+
+El Blueprint `render.yaml` crea:
+
+- Base `shareway-trip-execution-db` (PostgreSQL 17, acceso interno).
+- Servicio web `shareway-trip-execution` (Docker, puerto 8080, healthcheck `/health`).
+- `ConnectionStrings__TripExecution` inyectada desde la base en formato URL; `Program.cs` la normaliza a formato Npgsql.
+- `Database__AutoCreate=true`, `Swagger__Enabled=true` y `JWT_SECRET` (`sync: false`, se configura en Render).
+
+Rotación de credenciales: crear la credencial nueva en Render → actualizar `ConnectionStrings__TripExecution` → desplegar y verificar `/health` → eliminar la credencial anterior. Para JWT, actualizar `JWT_SECRET` en los validadores y al final en el emisor (Driver Management). `/health` es público: después de rotar la clave, prueba también un endpoint real con un token nuevo.
+
+---
+
+## 13. Decisiones de diseño
 
 | Decisión | Motivo |
 |---|---|
@@ -346,4 +361,13 @@ La base **no trae datos de ejemplo**: arranca vacía y se llena al usar la API.
 | **Concurrencia optimista (`Version`)** | Evita que requests simultáneos eludan el bloqueo por intentos |
 | **Sin MediatR ni bus interno** | Menos dependencias; los endpoints invocan directamente a los manejadores |
 | **Referencias entre contextos solo por Id** | Bajo acoplamiento entre bounded contexts |
+
+---
+
+## 14. Limitaciones y próximos pasos
+
+- El adaptador `IBrokerDeMensajes` solo escribe en el log; falta conectar un broker real.
+- La creación de tablas usa `EnsureCreated` (también en Render por `Database__AutoCreate`); conviene migrar a migraciones EF antes de crecer.
+- Los secretos viven solo en variables de entorno; no se versionan. Al rotar credenciales, elimina siempre la anterior y el archivo temporal local.
+- OpenAPI/Swagger queda expuesto en Render por `Swagger__Enabled=true`; desactívalo si el entorno es público.
 

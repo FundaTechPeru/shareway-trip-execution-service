@@ -19,11 +19,12 @@ using ShareWay.TripExecution.Infrastructure.Mensajeria.Outbox;
 using ShareWay.TripExecution.Infrastructure.Persistencia;
 using ShareWay.TripExecution.Infrastructure.Persistencia.Repositorios;
 using ShareWay.TripExecution.Api.Middleware;
+using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Render already uses the standard ASP.NET configuration keys Jwt__Key,
-// Jwt__Issuer and Jwt__Audience. Keep JWT_SECRET as an override for local use.
+// Render usa las claves estándar Jwt__Key, Jwt__Issuer y Jwt__Audience.
+// JWT_SECRET se mantiene como override (tiene prioridad), según la guía de rotación.
 var jwtSecret = builder.Configuration["JWT_SECRET"];
 if (string.IsNullOrWhiteSpace(jwtSecret))
     jwtSecret = builder.Configuration["Jwt:Key"];
@@ -83,7 +84,8 @@ builder.Services.AddAuthorization(options =>
     builder.Services.AddScoped<IManejadorDeConsulta<ListarViajesDelConductorConsulta, IReadOnlyList<ViajeDto>>, ListarViajesDelConductorManejador>();
 
     // Capa infraestructura:
-    var conectionString = builder.Configuration.GetConnectionString("TripExecution") ?? throw new InvalidOperationException("Falta ConnectionStrings:TripExecution.");
+    var conectionString = NormalizarCadenaDeConexion(
+        builder.Configuration.GetConnectionString("TripExecution") ?? throw new InvalidOperationException("Falta ConnectionStrings:TripExecution."));
     builder.Services.AddDbContext<TripExecutionDbContext>(o => o.UseNpgsql(conectionString));
     builder.Services.AddScoped<IViajeRepositorio, ViajeRepositorio>();
     builder.Services.AddScoped<IUnidadDeTrabajo>(sp => sp.GetRequiredService<TripExecutionDbContext>());
@@ -98,26 +100,48 @@ builder.Services.AddAuthorization(options =>
     builder.Services.AddOpenApi();
     builder.Services.AddProblemDetails();
     builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-    
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Swagger:Enabled"))
 {
     app.MapOpenApi();
     app.UseSwaggerUI( options =>
     {
         options.SwaggerEndpoint("/openapi/v1.json", "API v1");
     });
+}
+
+// Para entornos de prueba: crea esquema y tablas si no existen (no hay migraciones desplegadas).
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Database:AutoCreate"))
+{
     await using var scope = app.Services.CreateAsyncScope();
     await scope.ServiceProvider.GetRequiredService<TripExecutionDbContext>().Database.EnsureCreatedAsync();
 }
 
-app.MapGet("/health", () => Results.Ok(new { estado = "ok" }));
-app.UseHttpsRedirection();
+app.UseExceptionHandler();
 app.UseAuthentication();
 app.UseAuthorization();
+app.MapGet("/health", () => Results.Ok(new { estado = "ok" }));
 app.MapControllers();
 app.Run();
+
+static string NormalizarCadenaDeConexion(string cadena)
+{
+    if (!cadena.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) &&
+        !cadena.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase))
+        return cadena;
+
+    var uri = new Uri(cadena);
+    var credenciales = uri.UserInfo.Split(':', 2);
+    return new NpgsqlConnectionStringBuilder
+    {
+        Host = uri.Host,
+        Port = uri.Port > 0 ? uri.Port : 5432,
+        Database = uri.AbsolutePath.TrimStart('/'),
+        Username = Uri.UnescapeDataString(credenciales[0]),
+        Password = credenciales.Length > 1 ? Uri.UnescapeDataString(credenciales[1]) : null
+    }.ConnectionString;
+}
 
 public partial class Program;
