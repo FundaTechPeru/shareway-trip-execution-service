@@ -24,13 +24,14 @@ public sealed class Viaje : AggregateRoot<ViajeId>
     public EstadoViaje Estado { get; private set; }
     public DateTimeOffset? InicioReal { get; private set; }
     public DateTimeOffset? FinReal { get; private set; }
+    public string? RutaJson { get; private set; }
 
     public int Version { get; private set; }
 
     public IReadOnlyCollection<Abordaje> Abordajes => _abordajes.AsReadOnly();
 
     public static Viaje Crear(
-        GrupoId grupoId, ConductorId conductorId, IEnumerable<PasajeroConfirmado> pasajeros, DateTimeOffset ahora)
+        GrupoId grupoId, ConductorId conductorId, IEnumerable<PasajeroConfirmado> pasajeros, DateTimeOffset ahora, string? rutaJson = null)
     {
         var lista = pasajeros.ToList();
         if (lista.Count == 0)
@@ -39,6 +40,7 @@ public sealed class Viaje : AggregateRoot<ViajeId>
             throw new ReglaDeNegocioException("El manifiesto contiene reservas duplicadas.");
 
         var viaje = new Viaje(ViajeId.Nuevo(), grupoId, conductorId);
+        viaje.RutaJson = rutaJson;
         foreach (var p in lista)
             viaje._abordajes.Add(Abordaje.Pendiente(p.ReservaId, p.PasajeroId, p.Codigo));
 

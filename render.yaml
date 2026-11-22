@@ -1,0 +1,33 @@
+databases:
+  - name: shareway-trip-execution-db
+    databaseName: shareway_trip_execution
+    user: shareway
+    plan: free
+    region: virginia
+    postgresMajorVersion: "17"
+    ipAllowList: []   # solo acceso interno; ver README/instrucciones si quieres conectarte desde tu PC
+ 
+services:
+  - type: web
+    name: shareway-trip-execution
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: virginia
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: ConnectionStrings__TripExecution
+        fromDatabase:
+          name: shareway-trip-execution-db
+          property: connectionString
+      - key: Database__AutoCreate
+        value: "true"
+      - key: Swagger__Enabled
+        value: "true"
+      # Secreto: configurarlo en Render (UI o environment group), nunca en el repositorio.
+      # sync: false evita que un deploy del blueprint sobrescriba el valor ya guardado.
+      - key: JWT_SECRET
+        sync: false
+ 
