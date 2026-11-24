@@ -21,9 +21,14 @@ public sealed record PuntoRutaSolicitud(
     [param: Required, StringLength(120)] string Etiqueta,
     [param: Range(-90, 90)] double Latitud,
     [param: Range(-180, 180)] double Longitud,
-    [param: Required, RegularExpression("^(ORIGEN|PARADA|DESTINO)$")] string Tipo);
+    [param: Required, RegularExpression("^(ORIGEN|PARADA|DESTINO)$")] string Tipo,
+    Guid? ReservaId = null);
 
 public sealed record IniciarViajeSolicitud;
 public sealed record ValidarAbordajeSolicitud(Guid ReservaId, [param: Required][param: StringLength(100)] string Codigo, MetodoAbordaje Metodo);
 public sealed record FinalizarViajeSolicitud;
 public sealed record CancelarViajeSolicitud([param: Required][param: StringLength(550)] string Motivo);
+public sealed record CancelarParadaSolicitud(
+    Guid ReservaId,
+    [param: Required][param: StringLength(550)] string Motivo,
+    [param: StringLength(120)] string? Etiqueta = null);
