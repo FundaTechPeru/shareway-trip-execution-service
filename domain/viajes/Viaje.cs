@@ -114,6 +114,40 @@ public sealed class Viaje : AggregateRoot<ViajeId>
         LevantarEvento(new ViajeCancelado(Id, GrupoId, motivo.Trim(), ahora));
     }
 
+    /// <summary>Reordena las paradas de la ruta sin cambiar el estado del viaje.</summary>
+    public void OptimizarRuta(DateTimeOffset ahora)
+    {
+        if (RutaViaje.DesdeJson(RutaJson) is not { } ruta)
+            throw new ReglaDeNegocioException("El viaje no tiene una ruta que se pueda optimizar.");
+
+        var optimizada = ruta.Optimizada();
+        if (ruta.TieneMismoOrden(optimizada)) return;
+
+        RutaJson = optimizada.AJson();
+        Version++;
+        LevantarEvento(new RutaOptimizada(Id, "Orden de paradas optimizado", ahora));
+    }
+
+    /// <summary>
+    /// Quita la parada de un pasajero que canceló y recalcula el orden de la ruta.
+    /// El viaje sigue en su estado actual (incluido <see cref="EstadoViaje.EnCurso"/>).
+    /// </summary>
+    public void CancelarParada(ReservaId reservaId, string motivo, DateTimeOffset ahora, string? etiqueta = null)
+    {
+        if (string.IsNullOrWhiteSpace(motivo))
+            throw new ReglaDeNegocioException("El motivo de cancelación de la parada es obligatorio.");
+        if (Estado is not (EstadoViaje.Confirmado or EstadoViaje.EnCurso))
+            throw new TransicionDeEstadoInvalidaException(Id, Estado, nameof(CancelarParada));
+        if (!_abordajes.Any(a => a.Id == reservaId))
+            throw new PasajeroNoPerteneceAlViajeException(Id, reservaId);
+        if (RutaViaje.DesdeJson(RutaJson) is not { } ruta)
+            throw new ReglaDeNegocioException("El viaje no tiene una ruta de la cual quitar la parada.");
+
+        RutaJson = ruta.SinParada(reservaId.Valor, etiqueta).Optimizada().AJson();
+        Version++;
+        LevantarEvento(new ParadaCancelada(Id, reservaId, motivo.Trim(), ahora));
+    }
+
     private void AsegurarConductor(ConductorId solicitante)
     {
         if (solicitante != ConductorId)

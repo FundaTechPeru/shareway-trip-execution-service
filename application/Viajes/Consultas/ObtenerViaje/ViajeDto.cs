@@ -1,10 +1,16 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using ShareWay.TripExecution.Domain.Viajes;
 
 namespace ShareWay.TripExecution.Application.Viajes.Consultas.ObtenerViaje;
 
 public sealed record AbordajeDto(Guid ReservaId, Guid PasajeroId, bool Abordo, DateTimeOffset? AbordadoEn, int IntentosFallidos, bool Bloqueado);
-public sealed record PuntoRutaDto(string Etiqueta, double Latitud, double Longitud, string Tipo);
+public sealed record PuntoRutaDto(
+    string Etiqueta,
+    double Latitud,
+    double Longitud,
+    string Tipo,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? ReservaId = null);
 public sealed record RutaViajeDto(DateTimeOffset SalidaProgramada, string Origen, string Destino, IReadOnlyList<PuntoRutaDto> Puntos, bool EsPrueba = false);
 public sealed record ViajeDto(Guid Id, Guid GrupoId, Guid ConductorId, string Estado, DateTimeOffset? InicioReal, DateTimeOffset? FinReal, IReadOnlyList<AbordajeDto> Abordajes, RutaViajeDto? Ruta)
 {
