@@ -1,16 +1,19 @@
 using System.Security.Claims;
-using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ShareWay.TripExecution.Api.Contratos.Solicitudes;
 using ShareWay.TripExecution.Application.Abstracciones;
+using ShareWay.TripExecution.Application.Viajes.Comandos.CancelarParada;
 using ShareWay.TripExecution.Application.Viajes.Comandos.CancelarViaje;
 using ShareWay.TripExecution.Application.Viajes.Comandos.CrearViaje;
 using ShareWay.TripExecution.Application.Viajes.Comandos.FinalizarViaje;
 using ShareWay.TripExecution.Application.Viajes.Comandos.IniciarViaje;
+using ShareWay.TripExecution.Application.Viajes.Comandos.OptimizarRuta;
 using ShareWay.TripExecution.Application.Viajes.Comandos.ValidarAbordaje;
+using ShareWay.TripExecution.Application.Viajes.Consultas.ListarViajesAdmin;
 using ShareWay.TripExecution.Application.Viajes.Consultas.ListarViajesDelConductor;
 using ShareWay.TripExecution.Application.Viajes.Consultas.ObtenerViaje;
+using ShareWay.TripExecution.Domain.Viajes;
 
 namespace ShareWay.TripExecution.Api.Controllers;
 
@@ -29,13 +32,13 @@ public sealed class ViajesController : ControllerBase
         if (solicitud.Ruta is { } ruta && !RutaValida(ruta, out var error))
             return BadRequest(new { message = error });
 
-        var rutaDto = solicitud.Ruta is null ? null : new RutaViajeDto(
+        var rutaDominio = solicitud.Ruta is null ? null : new RutaViaje(
             solicitud.Ruta.SalidaProgramada!.Value,
             solicitud.Ruta.Origen.Trim(),
             solicitud.Ruta.Destino.Trim(),
-            solicitud.Ruta.Puntos.Select(p => new PuntoRutaDto(p.Etiqueta.Trim(), p.Latitud, p.Longitud, p.Tipo)).ToArray(),
+            solicitud.Ruta.Puntos.Select(p => new PuntoRuta(p.Etiqueta.Trim(), p.Latitud, p.Longitud, p.Tipo, p.ReservaId)).ToArray(),
             solicitud.Ruta.EsPrueba);
-        var rutaJson = rutaDto is null ? null : JsonSerializer.Serialize(rutaDto, JsonSerializerOptions.Web);
+        var rutaJson = rutaDominio?.Optimizada().AJson();
         var id = await manejador.ManejarAsync(new CrearViajeComando(solicitud.GrupoId, solicitud.ConductorId, solicitud.Pasajeros, rutaJson), cancellationToken);
         return CreatedAtAction(nameof(ObtenerPorId), new { id }, new { id });
     }
@@ -53,8 +56,24 @@ public sealed class ViajesController : ControllerBase
         return Ok(viajes);
     }
 
+    /// <summary>Consulta para el panel admin: filtra por conductor y/o pasajero; sin filtros lista todo.</summary>
+    [HttpGet("admin")]
+    [Authorize(Policy = "AdminOnly")]
+    [ProducesResponseType(typeof(IReadOnlyList<ViajeDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<IReadOnlyList<ViajeDto>>> ObtenerParaAdmin(
+        [FromQuery] Guid? conductorId,
+        [FromQuery] Guid? pasajeroId,
+        [FromServices] IManejadorDeConsulta<ListarViajesAdminConsulta, IReadOnlyList<ViajeDto>> manejador,
+        CancellationToken cancellationToken)
+    {
+        var viajes = await manejador.ManejarAsync(new ListarViajesAdminConsulta(conductorId, pasajeroId), cancellationToken);
+        return Ok(viajes);
+    }
+
     [HttpGet("{id:guid}")]
-    [Authorize(Policy = "DriverOnly")]
+    [Authorize(Policy = "DriverOrAdmin")]
     [ProducesResponseType(typeof(ViajeDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
@@ -62,7 +81,7 @@ public sealed class ViajesController : ControllerBase
     public async Task<ActionResult<ViajeDto>> ObtenerPorId(Guid id, [FromServices] IManejadorDeConsulta<ObtenerViajeConsulta, ViajeDto> manejador, CancellationToken cancellationToken)
     {
         var viaje = await manejador.ManejarAsync(new ObtenerViajeConsulta(id), cancellationToken);
-        if (viaje.ConductorId != ConductorAutenticado()) return Forbid();
+        if (User.IsInRole("DRIVER") && viaje.ConductorId != ConductorAutenticado()) return Forbid();
         return Ok(viaje);
     }
 
@@ -120,6 +139,51 @@ public sealed class ViajesController : ControllerBase
         }
 
         await manejador.ManejarAsync(new CancelarViajeComando(id, solicitud.Motivo), cancellationToken);
+        return Ok();
+    }
+
+    /// <summary>Reordena las paradas de la ruta con nearest-neighbor (conductor asignado).</summary>
+    [HttpPost("{id:guid}/ruta/optimizar")]
+    [Authorize(Policy = "DriverOnly")]
+    [ProducesResponseType(typeof(ViajeDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ViajeDto>> OptimizarRuta(Guid id,
+        [FromServices] IManejadorDeComando<OptimizarRutaComando> comando,
+        [FromServices] IManejadorDeConsulta<ObtenerViajeConsulta, ViajeDto> consulta,
+        CancellationToken cancellationToken)
+    {
+        var viaje = await consulta.ManejarAsync(new ObtenerViajeConsulta(id), cancellationToken);
+        if (viaje.ConductorId != ConductorAutenticado()) return Forbid();
+
+        await comando.ManejarAsync(new OptimizarRutaComando(id), cancellationToken);
+        var actualizado = await consulta.ManejarAsync(new ObtenerViajeConsulta(id), cancellationToken);
+        return Ok(actualizado);
+    }
+
+    /// <summary>Cancela la parada de un pasajero y recalcula la ruta sin cancelar el viaje.</summary>
+    [HttpPost("{id:guid}/paradas/cancelar")]
+    [Authorize(Policy = "DriverOrAdmin")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> CancelarParada(Guid id, [FromBody] CancelarParadaSolicitud solicitud,
+        [FromServices] IManejadorDeComando<CancelarParadaComando> manejador,
+        [FromServices] IManejadorDeConsulta<ObtenerViajeConsulta, ViajeDto> consulta,
+        CancellationToken cancellationToken)
+    {
+        if (User.IsInRole("DRIVER"))
+        {
+            var viaje = await consulta.ManejarAsync(new ObtenerViajeConsulta(id), cancellationToken);
+            if (viaje.ConductorId != ConductorAutenticado()) return Forbid();
+        }
+
+        await manejador.ManejarAsync(
+            new CancelarParadaComando(id, solicitud.ReservaId, solicitud.Motivo, solicitud.Etiqueta), cancellationToken);
         return Ok();
     }
 
