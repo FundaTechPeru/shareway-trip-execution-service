@@ -5,6 +5,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>shareway_trip_execution_service</RootNamespace>
+    <!-- El proyecto de pruebas vive en tests/ dentro del repo; se excluye del globbing de la app. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
