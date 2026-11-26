@@ -10,6 +10,7 @@ namespace ShareWay.TripExecution.Infrastructure.Persistencia;
 public sealed class TripExecutionDbContext(DbContextOptions<TripExecutionDbContext> opciones) : DbContext(opciones), IUnidadDeTrabajo
 {
     public DbSet<Viaje> Viajes => Set<Viaje>();
+    public DbSet<AlertaEmergencia> Alertas => Set<AlertaEmergencia>();
     public DbSet<MensajeOutbox> Outbox => Set<MensajeOutbox>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

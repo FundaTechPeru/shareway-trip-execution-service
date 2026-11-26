@@ -13,6 +13,10 @@ public static class MapeadorDeEventos
         AbordajeFallido e => new AbordajeFallidoIntegracion(e.IdEvento, e.OcurridoEn, e.ViajeId.Valor, e.ReservaId.Valor, e.PasajeroId.Valor, e.IntentosFallidos, e.Bloqueado),
         ViajeFinalizado e => new ViajeFinalizadoIntegracion(e.IdEvento, e.OcurridoEn, e.ViajeId.Valor, e.GrupoId.Valor, e.ConductorId.Valor,e.InicioReal, e.FinReal, e.ReservasAbordadas.Select(r => r.Valor).ToArray()),
         ViajeCancelado e => new ViajeCanceladoIntegracion(e.IdEvento, e.OcurridoEn, e.ViajeId.Valor, e.GrupoId.Valor, e.Motivo),
+        AlertaEmergenciaRegistrada e => new AlertaEmergenciaRegistradaIntegracion(
+            e.IdEvento, e.OcurridoEn, e.AlertaId.Valor, e.ViajeId.Valor, e.ReportanteId, e.RolReportante, e.Tipo),
+        AlertaEmergenciaAtendida e => new AlertaEmergenciaAtendidaIntegracion(
+            e.IdEvento, e.OcurridoEn, e.AlertaId.Valor, e.ViajeId.Valor, e.AdministradorId),
         _ => null
     };
 }

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShareWay.TripExecution.Application.Excepciones;
+using ShareWay.TripExecution.Application.Viajes.Comandos.AtenderAlerta;
 using ShareWay.TripExecution.Domain.SeedWork;
 using ShareWay.TripExecution.Domain.Viajes.Excepciones;
 
@@ -14,6 +15,7 @@ public sealed class ManejadorGlobalDeExcepciones(ILogger<ManejadorGlobalDeExcepc
         var (estado, titulo) = excepcion switch
         {
             ViajeNoEncontradoException => (StatusCodes.Status404NotFound, "Viaje no encontrado"),
+            AlertaNoEncontradaException => (StatusCodes.Status404NotFound, "Alerta no encontrada"),
             ConductorNoAsignadoException => (StatusCodes.Status403Forbidden, "Conductor no autorizado para este viaje"),
             ExcepcionDeDominio => (StatusCodes.Status409Conflict, "Regla de negocio violada"),
             DbUpdateConcurrencyException => (StatusCodes.Status409Conflict, "Conflicto de concurrencia; reintente"),
