@@ -21,6 +21,13 @@ public sealed class Viaje : AggregateRoot<ViajeId>
 
     public GrupoId GrupoId { get; private set; }
     public ConductorId ConductorId { get; private set; }
+    /// <summary>
+    /// Vehículo con el que se registra el viaje. Es opcional: en pruebas o migraciones
+    /// antiguas puede quedar nulo. Los datos del vehículo (placa, marca, modelo) viven
+    /// en Driver Management; aquí sólo guardamos el id histórico para que el panel pueda
+    /// rehidratarlos consultando Driver Management.
+    /// </summary>
+    public VehiculoId? VehiculoId { get; private set; }
     public EstadoViaje Estado { get; private set; }
     public DateTimeOffset? InicioReal { get; private set; }
     public DateTimeOffset? FinReal { get; private set; }
@@ -31,7 +38,8 @@ public sealed class Viaje : AggregateRoot<ViajeId>
     public IReadOnlyCollection<Abordaje> Abordajes => _abordajes.AsReadOnly();
 
     public static Viaje Crear(
-        GrupoId grupoId, ConductorId conductorId, IEnumerable<PasajeroConfirmado> pasajeros, DateTimeOffset ahora, string? rutaJson = null)
+        GrupoId grupoId, ConductorId conductorId, IEnumerable<PasajeroConfirmado> pasajeros, DateTimeOffset ahora,
+        string? rutaJson = null, VehiculoId? vehiculoId = null)
     {
         var lista = pasajeros.ToList();
         if (lista.Count == 0)
@@ -41,6 +49,7 @@ public sealed class Viaje : AggregateRoot<ViajeId>
 
         var viaje = new Viaje(ViajeId.Nuevo(), grupoId, conductorId);
         viaje.RutaJson = rutaJson;
+        viaje.VehiculoId = vehiculoId;
         foreach (var p in lista)
             viaje._abordajes.Add(Abordaje.Pendiente(p.ReservaId, p.PasajeroId, p.Codigo));
 

@@ -220,4 +220,117 @@ public sealed class ViajeTests
         Assert.Throws<PasajeroNoPerteneceAlViajeException>(() =>
             viaje.RegistrarAbordaje(viaje.ConductorId, ReservaId.Nuevo(), "1234", MetodoAbordaje.Pin, Ahora));
     }
+
+    // ---------- VehiculoId ----------
+
+    [Fact]
+    public void Crear_SinVehiculo_DejaVehiculoIdEnNulo()
+    {
+        var viaje = ViajeConfirmado();
+
+        Assert.Null(viaje.VehiculoId);
+    }
+
+    [Fact]
+    public void Crear_ConVehiculo_GuardaVehiculoIdHistorico()
+    {
+        var vehiculo = new VehiculoId(Guid.NewGuid());
+        var viaje = Viaje.Crear(
+            GrupoId.Nuevo(), ConductorId.Nuevo(), new[] { Pasajero() }, Ahora, rutaJson: null, vehiculoId: vehiculo);
+
+        Assert.Equal(vehiculo, viaje.VehiculoId);
+    }
+
+    // ---------- CancelarParada: casos extra (US-22) ----------
+
+    private static Viaje ViajeEnCursoConRuta(out ReservaId r1, out ReservaId r2, out ReservaId r3)
+    {
+        r1 = ReservaId.Nuevo();
+        r2 = ReservaId.Nuevo();
+        r3 = ReservaId.Nuevo();
+        var p1 = new PasajeroConfirmado(r1, PasajeroId.Nuevo(), CodigoAbordaje.DesdeTextoPlano("1111"));
+        var p2 = new PasajeroConfirmado(r2, PasajeroId.Nuevo(), CodigoAbordaje.DesdeTextoPlano("2222"));
+        var p3 = new PasajeroConfirmado(r3, PasajeroId.Nuevo(), CodigoAbordaje.DesdeTextoPlano("3333"));
+
+        var ruta = new RutaViaje(
+            Ahora.AddHours(1), "Origen", "Destino",
+            new[]
+            {
+                new PuntoRuta("Origen", -12.00, -77.00, "ORIGEN"),
+                new PuntoRuta("Ana",    -12.05, -77.02, "PARADA", r1.Valor),
+                new PuntoRuta("Beto",   -12.08, -77.05, "PARADA", r2.Valor),
+                new PuntoRuta("Carla",  -12.10, -77.06, "PARADA", r3.Valor),
+                new PuntoRuta("Destino",-12.12, -77.03, "DESTINO"),
+            }, EsPrueba: true);
+
+        var viaje = Viaje.Crear(GrupoId.Nuevo(), ConductorId.Nuevo(), new[] { p1, p2, p3 }, Ahora, ruta.AJson());
+        viaje.RegistrarAbordaje(viaje.ConductorId, r1, "1111", MetodoAbordaje.Pin, Ahora);
+        viaje.Iniciar(viaje.ConductorId, Ahora);
+        return viaje;
+    }
+
+    [Fact]
+    public void CancelarParada_ParadaIntermedia_LaQuitaYRecalculaRuta()
+    {
+        var viaje = ViajeEnCursoConRuta(out _, out var r2, out _);
+
+        viaje.CancelarParada(r2, "cambio de planes", Ahora, "Beto");
+
+        Assert.DoesNotContain(viaje.RutaJson!, "Beto");
+        Assert.Equal(EstadoViaje.EnCurso, viaje.Estado);
+        Assert.Contains(viaje.EventosDeDominio, e => e is ParadaCancelada);
+    }
+
+    [Fact]
+    public void CancelarParada_UltimaParadaRestante_LaQuitaYMantieneElViaje()
+    {
+        var viaje = ViajeEnCursoConRuta(out var r1, out var r2, out var r3);
+        viaje.CancelarParada(r2, "cancela Beto", Ahora, "Beto");
+        viaje.CancelarParada(r3, "cancela Carla", Ahora, "Carla");
+
+        viaje.CancelarParada(r1, "cancela Ana", Ahora, "Ana");
+
+        Assert.Equal(EstadoViaje.EnCurso, viaje.Estado);
+        Assert.DoesNotContain("Ana", viaje.RutaJson!);
+        Assert.DoesNotContain("Beto", viaje.RutaJson!);
+        Assert.DoesNotContain("Carla", viaje.RutaJson!);
+    }
+
+    [Fact]
+    public void CancelarParada_EnViajeFinalizado_Lanza()
+    {
+        var viaje = ViajeEnCursoConRuta(out var r1, out _, out _);
+        viaje.Finalizar(viaje.ConductorId, Ahora);
+
+        Assert.Throws<TransicionDeEstadoInvalidaException>(() =>
+            viaje.CancelarParada(r1, "fuera de tiempo", Ahora, "Ana"));
+    }
+
+    [Fact]
+    public void CancelarParada_EnViajeCancelado_Lanza()
+    {
+        var pasajero = Pasajero();
+        var viaje = Viaje.Crear(GrupoId.Nuevo(), ConductorId.Nuevo(), new[] { pasajero }, Ahora);
+        viaje.Cancelar("no se presentó nadie", Ahora);
+
+        Assert.Throws<TransicionDeEstadoInvalidaException>(() =>
+            viaje.CancelarParada(pasajero.ReservaId, "no aplica", Ahora, "Ana"));
+    }
+
+    [Fact]
+    public void CancelarParada_ReservaInexistente_Lanza()
+    {
+        var viaje = ViajeEnCursoConRuta(out _, out _, out _);
+
+        Assert.Throws<PasajeroNoPerteneceAlViajeException>(() =>
+            viaje.CancelarParada(ReservaId.Nuevo(), "no existe", Ahora, "X"));
+    }
+
+    [Fact]
+    public void CancelarParada_SinMotivo_Lanza()
+    {
+        var viaje = ViajeEnCursoConRuta(out var r1, out _, out _);
+
+        Assert.Throws<ReglaDeNegocioException>(() => viaje.CancelarParada(r1, "   ", Ahora, "Ana"));
+    }
 }
