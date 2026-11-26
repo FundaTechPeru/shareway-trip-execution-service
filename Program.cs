@@ -6,13 +6,19 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.EntityFrameworkCore;
 using ShareWay.TripExecution.Domain.Viajes;
 using ShareWay.TripExecution.Application.Abstracciones;
+using ShareWay.TripExecution.Application.Viajes.Comandos.AtenderAlerta;
+using ShareWay.TripExecution.Application.Viajes.Comandos.CancelarParada;
 using ShareWay.TripExecution.Application.Viajes.Comandos.CancelarViaje;
 using ShareWay.TripExecution.Application.Viajes.Comandos.CrearViaje;
 using ShareWay.TripExecution.Application.Viajes.Comandos.FinalizarViaje;
 using ShareWay.TripExecution.Application.Viajes.Comandos.IniciarViaje;
+using ShareWay.TripExecution.Application.Viajes.Comandos.OptimizarRuta;
+using ShareWay.TripExecution.Application.Viajes.Comandos.RegistrarAlerta;
 using ShareWay.TripExecution.Application.Viajes.Comandos.ValidarAbordaje;
-using ShareWay.TripExecution.Application.Viajes.Consultas.ObtenerViaje;
+using ShareWay.TripExecution.Application.Viajes.Consultas.ListarAlertas;
+using ShareWay.TripExecution.Application.Viajes.Consultas.ListarViajesAdmin;
 using ShareWay.TripExecution.Application.Viajes.Consultas.ListarViajesDelConductor;
+using ShareWay.TripExecution.Application.Viajes.Consultas.ObtenerViaje;
 using ShareWay.TripExecution.Infrastructure.Mensajeria;
 using ShareWay.TripExecution.Infrastructure.Mensajeria.Consumidores;
 using ShareWay.TripExecution.Infrastructure.Mensajeria.Outbox;
@@ -60,7 +66,7 @@ builder.Services
             {
                 var subject = context.Principal?.FindFirstValue("sub");
                 var role = context.Principal?.FindFirstValue("role");
-                if (!Guid.TryParse(subject, out _) || role is not ("ADMIN" or "DRIVER"))
+                if (!Guid.TryParse(subject, out _) || role is not ("ADMIN" or "DRIVER" or "PASSENGER"))
                     context.Fail("El token no contiene una identidad ShareWay válida.");
                 return Task.CompletedTask;
             }
@@ -72,6 +78,8 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("AdminOnly", policy => policy.RequireRole("ADMIN"));
     options.AddPolicy("DriverOnly", policy => policy.RequireRole("DRIVER"));
     options.AddPolicy("DriverOrAdmin", policy => policy.RequireRole("DRIVER", "ADMIN"));
+    // Las alertas de emergencia las abre el conductor del viaje o un pasajero abordado.
+    options.AddPolicy("DriverOrPassenger", policy => policy.RequireRole("DRIVER", "PASSENGER"));
 });
 
     // Capa aplicacion:
@@ -80,14 +88,21 @@ builder.Services.AddAuthorization(options =>
     builder.Services.AddScoped<IManejadorDeComando<ValidarAbordajeComando, ValidarAbordajeRespuesta>, ValidarAbordajeManejador>();
     builder.Services.AddScoped<IManejadorDeComando<FinalizarViajeComando>, FinalizarViajeManejador>();
     builder.Services.AddScoped<IManejadorDeComando<CancelarViajeComando>, CancelarViajeManejador>();
+    builder.Services.AddScoped<IManejadorDeComando<CancelarParadaComando>, CancelarParadaManejador>();
+    builder.Services.AddScoped<IManejadorDeComando<OptimizarRutaComando>, OptimizarRutaManejador>();
+    builder.Services.AddScoped<IManejadorDeComando<RegistrarAlertaComando, Guid>, RegistrarAlertaManejador>();
+    builder.Services.AddScoped<IManejadorDeComando<AtenderAlertaComando>, AtenderAlertaManejador>();
     builder.Services.AddScoped<IManejadorDeConsulta<ObtenerViajeConsulta, ViajeDto>, ObtenerViajeManejador>();
     builder.Services.AddScoped<IManejadorDeConsulta<ListarViajesDelConductorConsulta, IReadOnlyList<ViajeDto>>, ListarViajesDelConductorManejador>();
+    builder.Services.AddScoped<IManejadorDeConsulta<ListarViajesAdminConsulta, IReadOnlyList<ViajeDto>>, ListarViajesAdminManejador>();
+    builder.Services.AddScoped<IManejadorDeConsulta<ListarAlertasConsulta, PaginaAlertasDto>, ListarAlertasManejador>();
 
     // Capa infraestructura:
     var conectionString = NormalizarCadenaDeConexion(
         builder.Configuration.GetConnectionString("TripExecution") ?? throw new InvalidOperationException("Falta ConnectionStrings:TripExecution."));
     builder.Services.AddDbContext<TripExecutionDbContext>(o => o.UseNpgsql(conectionString));
     builder.Services.AddScoped<IViajeRepositorio, ViajeRepositorio>();
+    builder.Services.AddScoped<IAlertaEmergenciaRepositorio, AlertaEmergenciaRepositorio>();
     builder.Services.AddScoped<IUnidadDeTrabajo>(sp => sp.GetRequiredService<TripExecutionDbContext>());
     builder.Services.AddSingleton(TimeProvider.System);
     builder.Services.AddSingleton<IBrokerDeMensajes, BrokerEnLog>();

@@ -1,6 +1,7 @@
 using Reqnroll;
 using ShareWay.TripExecution.Domain.Identificadores;
 using ShareWay.TripExecution.Domain.Viajes;
+using ShareWay.TripExecution.Domain.Viajes.Excepciones;
 
 namespace ShareWay.TripExecution.Tests.Steps;
 
@@ -17,6 +18,7 @@ public sealed class PasosDeViaje
     private ConductorId _conductor;
     private ReservaId _reserva;
     private ResultadoAbordaje? _ultimoResultado;
+    private Exception? _ultimoError;
     private readonly Dictionary<string, ReservaId> _reservasPorNombre = new();
 
     // ---------- Dado ----------
@@ -81,11 +83,26 @@ public sealed class PasosDeViaje
     public void CuandoElConductorInicia() => _viaje.Iniciar(_conductor, Ahora);
 
     [When("el conductor finaliza el viaje")]
+    [Given("el conductor finaliza el viaje")]
     public void CuandoElConductorFinaliza() => _viaje.Finalizar(_conductor, Ahora.AddMinutes(45));
 
     [When("se cancela la parada de {string} por motivo {string}")]
     public void CuandoSeCancelaLaParada(string nombre, string motivo) =>
-        _viaje.CancelarParada(_reservasPorNombre[nombre], motivo, Ahora.AddMinutes(10));
+        _viaje.CancelarParada(_reservasPorNombre[nombre], motivo, Ahora.AddMinutes(10), nombre);
+
+    [When("se intenta cancelar la parada de {string} por motivo {string}")]
+    public void CuandoSeIntentaCancelarLaParada(string nombre, string motivo)
+    {
+        try { _viaje.CancelarParada(_reservasPorNombre[nombre], motivo, Ahora.AddMinutes(10), nombre); }
+        catch (Exception e) { _ultimoError = e; }
+    }
+
+    [When("se intenta cancelar una parada inexistente")]
+    public void CuandoSeIntentaCancelarParadaInexistente()
+    {
+        try { _viaje.CancelarParada(ReservaId.Nuevo(), "no existe", Ahora.AddMinutes(10), "X"); }
+        catch (Exception e) { _ultimoError = e; }
+    }
 
     // ---------- Entonces ----------
 
@@ -116,6 +133,14 @@ public sealed class PasosDeViaje
     [Then("la ruta todavía contiene la parada de {string}")]
     public void EntoncesLaRutaTodaviaContiene(string nombre) =>
         Assert.Contains(RutaActual().Puntos, p => p.Tipo == "PARADA" && p.ReservaId == _reservasPorNombre[nombre].Valor);
+
+    [Then("la operación falla con una transición inválida")]
+    public void EntoncesFallaConTransicionInvalida() =>
+        Assert.IsType<TransicionDeEstadoInvalidaException>(_ultimoError);
+
+    [Then("la operación falla porque el pasajero no pertenece al viaje")]
+    public void EntoncesFallaPorPasajeroInexistente() =>
+        Assert.IsType<PasajeroNoPerteneceAlViajeException>(_ultimoError);
 
     private RutaViaje RutaActual() =>
         RutaViaje.DesdeJson(_viaje.RutaJson) ?? throw new InvalidOperationException("El viaje no tiene ruta persistida.");

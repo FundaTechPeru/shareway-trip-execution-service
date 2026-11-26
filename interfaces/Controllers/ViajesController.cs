@@ -39,7 +39,9 @@ public sealed class ViajesController : ControllerBase
             solicitud.Ruta.Puntos.Select(p => new PuntoRuta(p.Etiqueta.Trim(), p.Latitud, p.Longitud, p.Tipo, p.ReservaId)).ToArray(),
             solicitud.Ruta.EsPrueba);
         var rutaJson = rutaDominio?.Optimizada().AJson();
-        var id = await manejador.ManejarAsync(new CrearViajeComando(solicitud.GrupoId, solicitud.ConductorId, solicitud.Pasajeros, rutaJson), cancellationToken);
+        var id = await manejador.ManejarAsync(
+            new CrearViajeComando(solicitud.GrupoId, solicitud.ConductorId, solicitud.Pasajeros, rutaJson, solicitud.VehiculoId),
+            cancellationToken);
         return CreatedAtAction(nameof(ObtenerPorId), new { id }, new { id });
     }
 

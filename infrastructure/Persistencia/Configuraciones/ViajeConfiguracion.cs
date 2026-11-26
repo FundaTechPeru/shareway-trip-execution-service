@@ -14,6 +14,8 @@ internal sealed class ViajeConfiguracion : IEntityTypeConfiguration<Viaje>
         builder.Property(v => v.Id).HasConversion(id => id.Valor, valor => new ViajeId(valor)).ValueGeneratedNever();
         builder.Property(v => v.GrupoId).HasConversion(id => id.Valor, valor => new GrupoId(valor)).IsRequired();
         builder.Property(v => v.ConductorId).HasConversion(id => id.Valor, valor => new ConductorId(valor)).IsRequired();
+        builder.Property(v => v.VehiculoId)
+            .HasConversion(id => id!.Value.Valor, valor => new VehiculoId(valor));
         builder.Property(v => v.Estado).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(v => v.InicioReal);
         builder.Property(v => v.FinReal);

@@ -8,7 +8,8 @@ public sealed record CrearViajeSolicitud(
     Guid GrupoId,
     Guid ConductorId,
     IReadOnlyList<PasajeroConfirmadoDto> Pasajeros,
-    RutaViajeSolicitud? Ruta = null);
+    RutaViajeSolicitud? Ruta = null,
+    Guid? VehiculoId = null);
 
 public sealed record RutaViajeSolicitud(
     [param: Required] DateTimeOffset? SalidaProgramada,
@@ -32,3 +33,7 @@ public sealed record CancelarParadaSolicitud(
     Guid ReservaId,
     [param: Required][param: StringLength(550)] string Motivo,
     [param: StringLength(120)] string? Etiqueta = null);
+
+public sealed record RegistrarAlertaSolicitud(
+    [param: Required][param: StringLength(60)] string Tipo,
+    [param: Required][param: StringLength(1000)] string Descripcion);

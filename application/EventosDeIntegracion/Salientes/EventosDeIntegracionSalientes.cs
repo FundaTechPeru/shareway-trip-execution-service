@@ -12,3 +12,7 @@ public sealed record PasajeroAbordoIntegracion(Guid IdEvento, DateTimeOffset Ocu
 public sealed record AbordajeFallidoIntegracion(Guid IdEvento, DateTimeOffset OcurridoEn, Guid ViajeId, Guid ReservaId, Guid PasajeroId, int IntentosFallidos, bool Bloqueado) : IEventoDeIntegracion;
 public sealed record ViajeFinalizadoIntegracion(Guid IdEvento, DateTimeOffset OcurridoEn, Guid ViajeId, Guid GrupoId, Guid ConductorId, DateTimeOffset InicioReal, DateTimeOffset FinReal, IReadOnlyList<Guid> ReservasAbordadas) : IEventoDeIntegracion;
 public sealed record ViajeCanceladoIntegracion(Guid IdEvento, DateTimeOffset OcurridoEn, Guid ViajeId, Guid GrupoId, string Motivo) : IEventoDeIntegracion;
+public sealed record AlertaEmergenciaRegistradaIntegracion(
+    Guid IdEvento, DateTimeOffset OcurridoEn, Guid AlertaId, Guid ViajeId, Guid ReportanteId, string RolReportante, string Tipo) : IEventoDeIntegracion;
+public sealed record AlertaEmergenciaAtendidaIntegracion(
+    Guid IdEvento, DateTimeOffset OcurridoEn, Guid AlertaId, Guid ViajeId, Guid AdministradorId) : IEventoDeIntegracion;

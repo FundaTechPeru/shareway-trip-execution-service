@@ -12,12 +12,22 @@ public sealed record PuntoRutaDto(
     string Tipo,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Guid? ReservaId = null);
 public sealed record RutaViajeDto(DateTimeOffset SalidaProgramada, string Origen, string Destino, IReadOnlyList<PuntoRutaDto> Puntos, bool EsPrueba = false);
-public sealed record ViajeDto(Guid Id, Guid GrupoId, Guid ConductorId, string Estado, DateTimeOffset? InicioReal, DateTimeOffset? FinReal, IReadOnlyList<AbordajeDto> Abordajes, RutaViajeDto? Ruta)
+public sealed record ViajeDto(
+    Guid Id,
+    Guid GrupoId,
+    Guid ConductorId,
+    Guid? VehiculoId,
+    string Estado,
+    DateTimeOffset? InicioReal,
+    DateTimeOffset? FinReal,
+    IReadOnlyList<AbordajeDto> Abordajes,
+    RutaViajeDto? Ruta)
 {
     public static ViajeDto Desde(Viaje v) => new(
         v.Id.Valor,
         v.GrupoId.Valor,
         v.ConductorId.Valor,
+        v.VehiculoId?.Valor,
         v.Estado.ToString(),
         v.InicioReal,
         v.FinReal,
