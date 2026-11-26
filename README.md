@@ -168,7 +168,15 @@ Base: `/api/viajes`. Los comandos devuelven `204 No Content` (o el resultado cor
 | `POST` | `/api/viajes/{id}/iniciar` | Inicia el viaje como conductor asignado (`DRIVER`); la identidad viene del JWT |
 | `POST` | `/api/viajes/{id}/finalizar` | Finaliza el viaje como conductor asignado (`DRIVER`); la identidad viene del JWT |
 | `POST` | `/api/viajes/{id}/cancelar` | Cancela el viaje confirmado como `ADMIN` o como conductor asignado |
+| `POST` | `/api/viajes/{id}/ruta/optimizar` | Reordena las paradas de la ruta (`DRIVER` asignado) |
+| `POST` | `/api/viajes/{id}/paradas/cancelar` | Quita la parada de un pasajero y recalcula la ruta sin cancelar el viaje (`DRIVER` asignado o `ADMIN`) |
+| `GET` | `/api/viajes/admin` | Listado admin con filtros opcionales `conductorId` y `pasajeroId` (`ADMIN`) |
+| `POST` | `/api/viajes/{id}/alertas` | Registra una alerta de emergencia desde el viaje (`DRIVER` asignado o `PASSENGER` con abordaje) |
+| `GET` | `/api/viajes/alertas` | Lista las alertas de emergencia, filtrables por `estado` y paginadas (`ADMIN`) |
+| `PATCH` | `/api/viajes/alertas/{id}/atender` | Marca una alerta como atendida (`ADMIN`) |
 | `GET` | `/health` | Chequeo de salud |
+
+El `POST /api/viajes` acepta un `vehiculoId` opcional: Trip Execution guarda únicamente el id histórico del vehículo con el que se registra el viaje; los datos (placa, marca, modelo) viven en **Driver Management** y el panel los rehidrata al vuelo. Las respuestas de `GET {id}`, `/mine` y `/admin` devuelven `vehiculoId: null` cuando el viaje no tenía uno.
 
 Los endpoints protegidos requieren `Authorization: Bearer <token>` firmado con HS256. La clave se lee de `JWT_SECRET` o, si no existe, de `Jwt:Key` (`Jwt__Key` en Render), y debe coincidir con la del Gateway. Si se configuran `Jwt:Issuer` (`Jwt__Issuer`) y `Jwt:Audience` (`Jwt__Audience`), también se validan. El servicio valida firma, vigencia, UUID en `sub` y rol (`ADMIN` o `DRIVER`). El endpoint `/health` continúa público.
 
