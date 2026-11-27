@@ -3,4 +3,4 @@ using ShareWay.TripExecution.Domain.SeedWork;
 
 namespace ShareWay.TripExecution.Domain.Viajes.Eventos;
 
-public sealed record ViajeIniciado(ViajeId ViajeId, ConductorId ConductorId, DateTimeOffset OcurridoEn) : EventoDeDominio(OcurridoEn);
+public sealed record ViajeIniciado(ViajeId ViajeId, GrupoId GrupoId, ConductorId ConductorId, DateTimeOffset OcurridoEn) : EventoDeDominio(OcurridoEn);

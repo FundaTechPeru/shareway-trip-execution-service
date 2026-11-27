@@ -8,10 +8,11 @@ public static class MapeadorDeEventos
     public static IEventoDeIntegracion? ADeIntegracion(IEventoDeDominio evento) => evento switch
     {
         ViajeCreado e => new ViajeCreadoIntegracion(e.IdEvento, e.OcurridoEn, e.ViajeId.Valor, e.GrupoId.Valor, e.ConductorId.Valor),
-        ViajeIniciado e => new ViajeIniciadoIntegracion(e.IdEvento, e.OcurridoEn, e.ViajeId.Valor, e.ConductorId.Valor),
+        ViajeIniciado e => new ViajeIniciadoIntegracion(e.IdEvento, e.OcurridoEn, e.ViajeId.Valor, e.GrupoId.Valor, e.ConductorId.Valor),
         PasajeroAbordo e => new PasajeroAbordoIntegracion(e.IdEvento, e.OcurridoEn, e.ViajeId.Valor, e.ReservaId.Valor, e.PasajeroId.Valor),
         AbordajeFallido e => new AbordajeFallidoIntegracion(e.IdEvento, e.OcurridoEn, e.ViajeId.Valor, e.ReservaId.Valor, e.PasajeroId.Valor, e.IntentosFallidos, e.Bloqueado),
-        ViajeFinalizado e => new ViajeFinalizadoIntegracion(e.IdEvento, e.OcurridoEn, e.ViajeId.Valor, e.GrupoId.Valor, e.ConductorId.Valor,e.InicioReal, e.FinReal, e.ReservasAbordadas.Select(r => r.Valor).ToArray()),
+        ViajeFinalizado e => new ViajeFinalizadoIntegracion(e.IdEvento, e.OcurridoEn, e.ViajeId.Valor, e.GrupoId.Valor, e.ConductorId.Valor,
+            e.InicioReal, e.FinReal, e.ReservasAbordadas.Select(r => r.Valor).ToArray(), e.DistanciaKm),
         ViajeCancelado e => new ViajeCanceladoIntegracion(e.IdEvento, e.OcurridoEn, e.ViajeId.Valor, e.GrupoId.Valor, e.Motivo),
         AlertaEmergenciaRegistrada e => new AlertaEmergenciaRegistradaIntegracion(
             e.IdEvento, e.OcurridoEn, e.AlertaId.Valor, e.ViajeId.Valor, e.ReportanteId, e.RolReportante, e.Tipo),

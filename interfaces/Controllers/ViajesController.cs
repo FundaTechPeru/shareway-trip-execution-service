@@ -27,7 +27,7 @@ public sealed class ViajesController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> Crear([FromBody] CrearViajeSolicitud solicitud, [FromServices] IManejadorDeComando<CrearViajeComando, Guid> manejador, CancellationToken cancellationToken)
+    public async Task<IActionResult> Crear([FromBody] CrearViajeSolicitud solicitud, [FromServices] IManejadorDeComando<CrearViajeComando, CrearViajeResultado> manejador, CancellationToken cancellationToken)
     {
         if (solicitud.Ruta is { } ruta && !RutaValida(ruta, out var error))
             return BadRequest(new { message = error });
@@ -39,9 +39,10 @@ public sealed class ViajesController : ControllerBase
             solicitud.Ruta.Puntos.Select(p => new PuntoRuta(p.Etiqueta.Trim(), p.Latitud, p.Longitud, p.Tipo, p.ReservaId)).ToArray(),
             solicitud.Ruta.EsPrueba);
         var rutaJson = rutaDominio?.Optimizada().AJson();
-        var id = await manejador.ManejarAsync(
+        var resultado = await manejador.ManejarAsync(
             new CrearViajeComando(solicitud.GrupoId, solicitud.ConductorId, solicitud.Pasajeros, rutaJson, solicitud.VehiculoId),
             cancellationToken);
+        var id = resultado.Id;
         return CreatedAtAction(nameof(ObtenerPorId), new { id }, new { id });
     }
 

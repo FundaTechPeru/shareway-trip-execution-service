@@ -95,6 +95,16 @@ public sealed record RutaViaje(
         return this with { Puntos = puntos };
     }
 
+    /// <summary>Suma de las distancias haversine entre puntos consecutivos, en kilómetros.</summary>
+    public double DistanciaTotalKm()
+    {
+        var puntos = Puntos ?? Array.Empty<PuntoRuta>();
+        var total = 0.0;
+        for (var i = 1; i < puntos.Count; i++)
+            total += DistanciaKm(puntos[i - 1], puntos[i]);
+        return total;
+    }
+
     public bool TieneMismoOrden(RutaViaje otra) =>
         SalidaProgramada == otra.SalidaProgramada &&
         Origen == otra.Origen &&
