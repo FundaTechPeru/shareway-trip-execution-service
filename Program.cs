@@ -131,7 +131,25 @@ if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Swagger
 if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Database:AutoCreate"))
 {
     await using var scope = app.Services.CreateAsyncScope();
-    await scope.ServiceProvider.GetRequiredService<TripExecutionDbContext>().Database.EnsureCreatedAsync();
+    var dbContext = scope.ServiceProvider.GetRequiredService<TripExecutionDbContext>();
+    await dbContext.Database.EnsureCreatedAsync();
+
+    // EnsureCreated no altera una base existente: los cambios incrementales viven en
+    // database/migrations/*.sql (embebidos e idempotentes) y se aplican en cada arranque.
+    // Si alguno falla, la excepción se propaga y el servicio no arranca.
+    var ensamblado = typeof(Program).Assembly;
+    var scripts = ensamblado.GetManifestResourceNames()
+        .Where(n => n.StartsWith("migrations/", StringComparison.Ordinal) && n.EndsWith(".sql", StringComparison.Ordinal))
+        .Order(StringComparer.Ordinal);
+    foreach (var script in scripts)
+    {
+        await using var stream = ensamblado.GetManifestResourceStream(script)
+            ?? throw new InvalidOperationException($"No se encontró el script embebido {script}.");
+        using var lector = new StreamReader(stream);
+        var sql = await lector.ReadToEndAsync();
+        await dbContext.Database.ExecuteSqlRawAsync(sql);
+        app.Logger.LogInformation("Script de migración aplicado: {Script}", script);
+    }
 }
 
 app.UseExceptionHandler();

@@ -21,4 +21,10 @@
     <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Los scripts SQL viajan dentro del ensamblado: la imagen Docker solo contiene la salida de dotnet publish. -->
+    <None Remove="database\migrations\*.sql" />
+    <EmbeddedResource Include="database\migrations\*.sql" LogicalName="migrations/%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>

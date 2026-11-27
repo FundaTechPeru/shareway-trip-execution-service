@@ -315,15 +315,24 @@ El documento OpenAPI se puede importar en Postman o Insomnia. Si se instala una 
 ## 11. Base de datos
 
 - **Motor:** PostgreSQL 17. **Esquema:** `trip_execution`.
-- **Creación de tablas:** se ejecuta `EnsureCreated` al arrancar en `Development` o cuando `Database__AutoCreate=true` (así lo configura `render.yaml`). Para entornos reales lo recomendable es usar **migraciones** (`dotnet ef migrations add Inicial` / `dotnet ef database update`); no mezcles ambos mecanismos sin antes comprobar el esquema resultante.
+- **Creación de tablas:** se ejecuta `EnsureCreated` al arrancar en `Development` o cuando `Database__AutoCreate=true` (así lo configura `render.yaml`). `EnsureCreated` solo crea el esquema en una base vacía; no agrega columnas ni tablas a una base existente.
+- **Scripts SQL al arrancar:** bajo esa misma condición, justo después de `EnsureCreated`, el servicio ejecuta cada script de [`database/migrations/`](database/migrations/) en orden alfabético (por eso llevan el prefijo de fecha `AAAAMMDD_`). Los scripts van embebidos en el ensamblado (`EmbeddedResource` en el `.csproj`), así que funcionan también en la imagen Docker. Son idempotentes (`IF NOT EXISTS`) y se ejecutan en cada arranque; el log registra cada script aplicado. **Si un script falla, el servicio no arranca.**
+- **Nuevos cambios de esquema:** agrega un script nuevo e idempotente en `database/migrations/` con un prefijo de fecha posterior; no edites los existentes. Para entornos reales lo recomendable a futuro es usar **migraciones de EF Core** (`dotnet ef migrations add Inicial` / `dotnet ef database update`); no mezcles ambos mecanismos sin antes comprobar el esquema resultante.
 
 | Tabla | Contenido |
 |---|---|
-| `viajes` | Aggregate raíz (índice único por `GrupoId`, token de concurrencia `Version`, `RutaJson` nullable en `jsonb`) |
+| `viajes` | Aggregate raíz (índice único por `GrupoId`, token de concurrencia `Version`, `RutaJson` nullable en `jsonb`, `VehiculoId` nullable) |
 | `abordajes` | Un registro por reserva confirmada (hash del código, intentos, hora de abordaje) |
 | `outbox` | Eventos de integración pendientes y publicados |
+| `alertas_emergencia` | Alertas de emergencia de un viaje (FK lógica por `ViajeId`, estado, quién y cuándo la atendió) |
 
-Para una base existente, aplica primero [la migración aditiva](database/migrations/20261121_add_ruta_json.sql) desde una conexión administrativa. Confirma que existe `trip_execution.viajes` antes de ejecutarla. La migración no borra ni actualiza filas. Ojo: con `Database__AutoCreate=true`, Render ejecuta `EnsureCreated`; decide un solo mecanismo antes de desplegar para no crear un esquema divergente.
+| Script | Cambio |
+|---|---|
+| [`20261121_add_ruta_json.sql`](database/migrations/20261121_add_ruta_json.sql) | Columna `RutaJson` (`jsonb`, nullable) en `viajes` |
+| [`20261125_add_alertas_emergencia.sql`](database/migrations/20261125_add_alertas_emergencia.sql) | Tabla `alertas_emergencia` e índices por `Estado` y `ViajeId` |
+| [`20261125_add_vehiculo_id.sql`](database/migrations/20261125_add_vehiculo_id.sql) | Columna `VehiculoId` (`uuid`, nullable) en `viajes` e índice parcial |
+
+Los scripts son aditivos: no borran ni actualizan filas. Si el servicio corre sin `Database__AutoCreate` (fuera de `Development`), aplícalos manualmente en ese mismo orden desde una conexión administrativa, después de confirmar que existe `trip_execution.viajes`.
 
 ### Consultar los datos
 
