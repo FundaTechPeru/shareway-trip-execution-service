@@ -51,7 +51,7 @@ public sealed class Viaje : AggregateRoot<ViajeId>
         viaje.RutaJson = rutaJson;
         viaje.VehiculoId = vehiculoId;
         foreach (var p in lista)
-            viaje._abordajes.Add(Abordaje.Pendiente(p.ReservaId, p.PasajeroId, p.Codigo));
+            viaje._abordajes.Add(Abordaje.Pendiente(p.ReservaId, p.PasajeroId, p.Codigo, p.Pin));
 
         viaje.LevantarEvento(new ViajeCreado(viaje.Id, grupoId, conductorId, ahora));
         return viaje;
@@ -96,7 +96,7 @@ public sealed class Viaje : AggregateRoot<ViajeId>
         Estado = EstadoViaje.EnCurso;
         InicioReal = ahora;
         Version++;
-        LevantarEvento(new ViajeIniciado(Id, ConductorId, ahora));
+        LevantarEvento(new ViajeIniciado(Id, GrupoId, ConductorId, ahora));
     }
 
     public void Finalizar(ConductorId solicitante, DateTimeOffset ahora)
@@ -109,7 +109,10 @@ public sealed class Viaje : AggregateRoot<ViajeId>
         Version++;
 
         var abordadas = _abordajes.Where(a => a.EstaAbordado).Select(a => a.Id).ToArray();
-        LevantarEvento(new ViajeFinalizado(Id, GrupoId, ConductorId, InicioReal!.Value, ahora, abordadas));
+        var distanciaKm = RutaViaje.DesdeJson(RutaJson) is { } ruta
+            ? Math.Round(ruta.DistanciaTotalKm(), 2, MidpointRounding.AwayFromZero)
+            : (double?)null;
+        LevantarEvento(new ViajeFinalizado(Id, GrupoId, ConductorId, InicioReal!.Value, ahora, abordadas, distanciaKm));
     }
 
     public void Cancelar(string motivo, DateTimeOffset ahora)

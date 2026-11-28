@@ -20,10 +20,12 @@ using ShareWay.TripExecution.Application.Viajes.Consultas.ListarViajesAdmin;
 using ShareWay.TripExecution.Application.Viajes.Consultas.ListarViajesDelConductor;
 using ShareWay.TripExecution.Application.Viajes.Consultas.ObtenerViaje;
 using ShareWay.TripExecution.Infrastructure.Mensajeria;
+using ShareWay.TripExecution.Infrastructure.Mensajeria.Booking;
 using ShareWay.TripExecution.Infrastructure.Mensajeria.Consumidores;
 using ShareWay.TripExecution.Infrastructure.Mensajeria.Outbox;
 using ShareWay.TripExecution.Infrastructure.Persistencia;
 using ShareWay.TripExecution.Infrastructure.Persistencia.Repositorios;
+using ShareWay.TripExecution.Infrastructure.Seguridad;
 using ShareWay.TripExecution.Api.Middleware;
 using Npgsql;
 
@@ -36,6 +38,16 @@ if (string.IsNullOrWhiteSpace(jwtSecret))
     jwtSecret = builder.Configuration["Jwt:Key"];
 if (string.IsNullOrWhiteSpace(jwtSecret))
     throw new InvalidOperationException("Falta configurar JWT_SECRET o Jwt:Key para validar las sesiones del Gateway.");
+
+// Clave compartida para las llamadas entre servicios (X-Internal-Api-Key). Fuera de
+// Development es obligatoria; en local se usa la clave de desarrollo con una advertencia.
+var claveInterna = builder.Configuration[ClaveInterna.VariableDeEntorno];
+if (string.IsNullOrWhiteSpace(claveInterna))
+{
+    if (!builder.Environment.IsDevelopment())
+        throw new InvalidOperationException($"Falta configurar {ClaveInterna.VariableDeEntorno} para las llamadas entre servicios.");
+    claveInterna = ClaveInterna.ValorDeDesarrollo;
+}
 
 var jwtIssuer = builder.Configuration["Jwt:Issuer"];
 var jwtAudience = builder.Configuration["Jwt:Audience"];
@@ -83,7 +95,7 @@ builder.Services.AddAuthorization(options =>
 });
 
     // Capa aplicacion:
-    builder.Services.AddScoped<IManejadorDeComando<CrearViajeComando, Guid>, CrearViajeManejador>();
+    builder.Services.AddScoped<IManejadorDeComando<CrearViajeComando, CrearViajeResultado>, CrearViajeManejador>();
     builder.Services.AddScoped<IManejadorDeComando<IniciarViajeComando>, IniciarViajeManejador>();
     builder.Services.AddScoped<IManejadorDeComando<ValidarAbordajeComando, ValidarAbordajeRespuesta>, ValidarAbordajeManejador>();
     builder.Services.AddScoped<IManejadorDeComando<FinalizarViajeComando>, FinalizarViajeManejador>();
@@ -105,7 +117,12 @@ builder.Services.AddAuthorization(options =>
     builder.Services.AddScoped<IAlertaEmergenciaRepositorio, AlertaEmergenciaRepositorio>();
     builder.Services.AddScoped<IUnidadDeTrabajo>(sp => sp.GetRequiredService<TripExecutionDbContext>());
     builder.Services.AddSingleton(TimeProvider.System);
-    builder.Services.AddSingleton<IBrokerDeMensajes, BrokerEnLog>();
+    builder.Services.AddSingleton(new ClaveInterna(claveInterna));
+    builder.Services.AddHttpClient<IBrokerDeMensajes, BrokerHttpBooking>(cliente =>
+    {
+        cliente.BaseAddress = BrokerHttpBooking.DireccionBase(builder.Configuration["BOOKING_URL"]);
+        cliente.Timeout = BrokerHttpBooking.Timeout;
+    });
     builder.Services.AddScoped<GrupoConfirmadoConsumidor>();
     builder.Services.AddHostedService<ProcesadorOutbox>();
 
@@ -117,6 +134,12 @@ builder.Services.AddAuthorization(options =>
     builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 var app = builder.Build();
+
+if (app.Services.GetRequiredService<ClaveInterna>().EsDeDesarrollo)
+    app.Logger.LogWarning("{Variable} no está configurada: se usa la clave de desarrollo. No la uses fuera de tu máquina.",
+        ClaveInterna.VariableDeEntorno);
+app.Logger.LogInformation("Eventos de integración hacia Booking: {Url}",
+    BrokerHttpBooking.DireccionBase(app.Configuration["BOOKING_URL"]));
 
 if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Swagger:Enabled"))
 {

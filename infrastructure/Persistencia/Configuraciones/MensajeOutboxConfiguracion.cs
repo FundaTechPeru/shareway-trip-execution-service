@@ -14,6 +14,10 @@ internal sealed class MensajeOutboxConfiguracion : IEntityTypeConfiguration<Mens
         builder.Property(m => m.Tipo).HasMaxLength(200).IsRequired();
         builder.Property(m => m.Contenido).HasColumnType("jsonb").IsRequired();
         builder.Property(m => m.OcurridoEn).IsRequired();
+        builder.Property(m => m.Intentos).IsRequired().HasDefaultValue(0);
+        builder.Property(m => m.SiguienteIntentoEn);
+        builder.Property(m => m.FallidoEn);
+        builder.Property(m => m.UltimoError).HasMaxLength(MensajeOutbox.LongitudMaximaError);
         builder.HasIndex(m => m.ProcesadoEn);
     }
 }

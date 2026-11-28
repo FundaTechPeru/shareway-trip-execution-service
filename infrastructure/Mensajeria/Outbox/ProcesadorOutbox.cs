@@ -15,7 +15,10 @@ internal sealed class ProcesadorOutbox(IServiceScopeFactory scopes, TimeProvider
         {
             try
             {
-                await ProcesarLoteAsync(ct);
+                await using var scope = scopes.CreateAsyncScope();
+                var contexto = scope.ServiceProvider.GetRequiredService<TripExecutionDbContext>();
+                var broker = scope.ServiceProvider.GetRequiredService<IBrokerDeMensajes>();
+                await ProcesarLoteAsync(contexto, broker, reloj, log, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -24,30 +27,54 @@ internal sealed class ProcesadorOutbox(IServiceScopeFactory scopes, TimeProvider
         }
     }
 
-    private async Task ProcesarLoteAsync(CancellationToken ct)
+    /// <summary>
+    /// Envía los mensajes pendientes en orden. Un fallo transitorio programa el reintento y detiene
+    /// el lote (conserva el orden); un rechazo definitivo marca el mensaje como fallido y sigue.
+    /// </summary>
+    internal static async Task ProcesarLoteAsync(
+        TripExecutionDbContext contexto, IBrokerDeMensajes broker, TimeProvider reloj, ILogger log, CancellationToken ct)
     {
-        await using var scope = scopes.CreateAsyncScope();
-        var contexto = scope.ServiceProvider.GetRequiredService<TripExecutionDbContext>();
-        var broker = scope.ServiceProvider.GetRequiredService<IBrokerDeMensajes>();
-
         var pendientes = await contexto.Outbox
-            .Where(m => m.ProcesadoEn == null)
+            .Where(m => m.ProcesadoEn == null && m.FallidoEn == null)
             .OrderBy(m => m.OcurridoEn)
             .Take(TamanoLote)
             .ToListAsync(ct);
 
         foreach (var mensaje in pendientes)
         {
+            // El primero en espera bloquea a los posteriores: así se conserva el orden.
+            if (!mensaje.ListoParaEnviar(reloj.GetUtcNow()))
+                break;
+
+            ResultadoPublicacion resultado;
             try
             {
-                await broker.PublicarAsync(mensaje.Tipo, mensaje.Contenido, ct);
-                mensaje.MarcarProcesado(reloj.GetUtcNow());
+                resultado = await broker.PublicarAsync(mensaje.Tipo, mensaje.Contenido, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                log.LogWarning(ex, "No se pudo publicar {Tipo} ({Id}); se detiene el lote para conservar el orden.", mensaje.Tipo, mensaje.Id);
-                break;
+                resultado = ResultadoPublicacion.Reintentar(ex.Message);
             }
+
+            var ahora = reloj.GetUtcNow();
+            if (resultado.Estado is EstadoPublicacion.Publicado or EstadoPublicacion.Omitido)
+            {
+                mensaje.MarcarProcesado(ahora);
+                continue;
+            }
+
+            if (resultado.Estado == EstadoPublicacion.Fallido)
+            {
+                mensaje.MarcarFallido(ahora, resultado.Error ?? "Rechazado por el destino.");
+                log.LogError("Evento {Tipo} ({Id}) rechazado de forma definitiva: {Error}", mensaje.Tipo, mensaje.Id, mensaje.UltimoError);
+                continue;
+            }
+
+            mensaje.ProgramarReintento(ahora, resultado.Error ?? "Fallo transitorio.");
+            log.LogWarning(
+                "No se pudo publicar {Tipo} ({Id}), intento {Intentos}; siguiente intento {Siguiente:O}. Se detiene el lote para conservar el orden. {Error}",
+                mensaje.Tipo, mensaje.Id, mensaje.Intentos, mensaje.SiguienteIntentoEn, mensaje.UltimoError);
+            break;
         }
 
         await contexto.SaveChangesAsync(ct);

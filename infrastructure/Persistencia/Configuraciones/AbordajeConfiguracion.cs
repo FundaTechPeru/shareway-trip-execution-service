@@ -28,6 +28,10 @@ internal sealed class AbordajeConfiguracion : IEntityTypeConfiguration<Abordaje>
             .HasConversion(c => c.Hash, hash => CodigoAbordaje.DesdeHash(hash))
             .HasMaxLength(128)
             .IsRequired();
+        builder.Property(a => a.Pin)
+            .HasColumnName("pin_hash")
+            .HasConversion(c => c!.Hash, hash => CodigoAbordaje.DesdeHash(hash))
+            .HasMaxLength(128);
         builder.Property(a => a.IntentosFallidos).IsRequired();
         builder.Property(a => a.Metodo).HasConversion<string>().HasMaxLength(10);
         builder.Property(a => a.AbordadoEn);
